@@ -1,3 +1,13 @@
 
 
-This is a very simple wrapper for OpenNI to use with Cinder, following on the philosophy of wrapping only things that need to be wrapped and allowing users to dig into the specifics of their library as much as possible.  In the “Build Settings” tab, set the “Header Search Paths” as “/usr/include/ni”. To link with the library, open the Terminal and execute “open /usr/lib”. The Finder will open in the folder “/usr/lib”. Now drag the file “libOpenNI.dylib” to the folder “Frameworks” of your Xcode project. There is another way of adding Frameworks to projects, which is through the “Link Binary With Libraries” option of the “Build Phases” tab of the target of your project. The old “add existing frameworks” option of Xcode 3 disappeared. 
+This is a very simple wrapper for OpenNI to use with Cinder, following on the philosophy of wrapping only things that need to be wrapped and allowing users to dig into the specifics of their library as much as possible. 
+
+OSX
+---
+
+In the “Build Settings” tab, set the “Header Search Paths” as “/usr/include/ni”. To link with the library, open the Terminal and execute “open /usr/lib”. The Finder will open in the folder “/usr/lib”. Now drag the file “libOpenNI.dylib” to the folder “Frameworks” of your Xcode project. There is another way of adding Frameworks to projects, which is through the “Link Binary With Libraries” option of the “Build Phases” tab of the target of your project. The old “add existing frameworks” option of Xcode 3 disappeared.
+
+
+VC10
+---
+ 
