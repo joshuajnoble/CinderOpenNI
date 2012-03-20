@@ -33,7 +33,6 @@ namespace cinder {
 #define MAX_DEPTH = 10000;
 #define MIN_DEPTH = -9999;
     
-XnCallbackHandle hUserCallbacks, hCalibrationStart, hCalibrationComplete, hPoseDetected, hCalibrationInProgress, hPoseInProgress;
     
     class ImageSourceKinectColor : public ImageSource 
     {
@@ -116,13 +115,9 @@ XnCallbackHandle hUserCallbacks, hCalibrationStart, hCalibrationComplete, hPoseD
         return cinder::ImageSourceRef( new cinder::ImageSourceKinectColor( (uint8_t*) image, (int) metaData.XRes(), (int) metaData.YRes() ) );
     }
     
-    
-    
     inline cinder::ImageSourceRef fromOpenNI ( xn::ImageMetaData &metaData ) {
         return cinder::ImageSourceRef( new cinder::ImageSourceKinectColor( (uint8_t*) metaData.Data(), (int) metaData.XRes(), (int) metaData.YRes() ) );
     }
-    
-    
     
     inline cinder::ImageSourceRef fromOpenNI (const xn::DepthMetaData &metaData ) {
         
@@ -164,6 +159,7 @@ XnCallbackHandle hUserCallbacks, hCalibrationStart, hCalibrationComplete, hPoseD
         return ciMat;
     }
     
+    
     class CiPlane3D {
     public:
         
@@ -180,9 +176,9 @@ XnCallbackHandle hUserCallbacks, hCalibrationStart, hCalibrationComplete, hPoseD
         }
     };
 
+    //////////////////////////////////////////////////////////////////////
     
-    
-#ifdef WIN32
+    #ifdef WIN32
     
     void YUV422ToRGB888(const XnUInt8* pYUVImage, XnUInt8* pRGBAImage, XnUInt32 nYUVSize, XnUInt32 nRGBSize)
     {
