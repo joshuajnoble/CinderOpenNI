@@ -32,6 +32,8 @@ class OpenNIApp : public AppBasic {
     xn::ImageMetaData mimageMD;
     
     gl::Texture color, depth;
+    vector< vector<Vec3f> > userJoints;
+    
     
     bool calibratedUser;
     
@@ -144,7 +146,7 @@ void OpenNIApp::setup()
     
     gl::Texture::Format format;
     
-    color = gl::Texture(320, 240, format);
+    color = gl::Texture(640, 480, format);
     depth = gl::Texture(320, 240, format);
     
 }
@@ -183,8 +185,34 @@ void OpenNIApp::update()
         if(mUserGenerator.GetSkeletonCap().IsTracking(aUsers[i])==FALSE)
             continue;
         
-        mUserGenerator.GetSkeletonCap().GetSkeletonJoint(aUsers[i],XN_SKEL_TORSO,torsoJoint);
-        console() << "user " << aUsers[i] << " head at " << torsoJoint.position.position.X << "  " << torsoJoint.position.position.Y << " " << torsoJoint.position.position.Z;
+        // make 1 user
+        userJoints.push_back( vector<Vec3f>() );
+        
+        // get ready to get all joints
+        XnSkeletonJoint pJoints[24]; // there can't be more than 24
+        XnUInt16 numberOfJoints;
+        
+        // find out how many there are
+        mUserGenerator.GetSkeletonCap().EnumerateActiveJoints(&pJoints[0], numberOfJoints);
+        
+        
+        XnSkeletonJointPosition *trans = new XnSkeletonJointPosition[numberOfJoints];
+        XnPoint3D *realWorldPoint = new XnPoint3D[numberOfJoints];
+        
+        // now loop through each joint and get its position
+        int j = 0;
+        while( j < numberOfJoints) {
+            mUserGenerator.GetSkeletonCap().GetSkeletonJointPosition(aUsers[i], pJoints[j], trans[j]);
+            mDepth.ConvertRealWorldToProjective(1, &trans[i].position, &realWorldPoint[i]);
+            userJoints.back().push_back( fromOpenNI(realWorldPoint[i]));
+            j++;
+        }
+        
+        // just get one
+        //XnSkeletonJointTransformation torsoJoint;
+        //mUserGenerator.GetSkeletonCap().GetSkeletonJoint(aUsers[i],XN_SKEL_TORSO,torsoJoint);
+        //mDepth.ConvertRealWorldToProjective(1, &torsoJoint.position.position, &realWorldPoint);
+        //console() << "user " << aUsers[i] << " head at " << torsoJoint.position.position.X << "  " << torsoJoint.position.position.Y << " " << torsoJoint.position.position.Z;
     }
     
     
