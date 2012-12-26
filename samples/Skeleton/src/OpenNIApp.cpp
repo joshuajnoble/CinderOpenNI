@@ -11,27 +11,43 @@ using namespace ci::app;
 
 class OpenNIApp : public AppBasic {
   public:
+
 	void setup();
 	void mouseDown( MouseEvent event );	
 	void update();
 	void draw();
+	void exit();
+
+	// openNI drawing routines
+	void drawSkeleton(const nite::UserData& userData);
+	void drawLimb(const nite::SkeletonJoint& joint1, const nite::SkeletonJoint& joint2, Color& color);
     
-    bool calibratedUser;
-    
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////
 	openni::Device mDevice;
 	nite::UserTracker* mTracker;
+	nite::UserTrackerFrameRef userTrackerFrame;
 
 	bool mVisibleUsers[10];
 	nite::SkeletonState mSkeletonStates[10];
 
+	int exitPoseTimeout; // this will be how long we want the user to make the Exit pose (hands crossed in this case) in mS
+	uint64_t exitPoseUserTimestamp; //  this will be when they started making that
+	int exitPoseUserId; // the user that started making the pose
+
+	int depthX, depthY;
+
 	gl::Texture colorTex, depthTex;
+
+	int mUserCount;
+	float mColorCounter;
 
 };
 
 void OpenNIApp::setup()
 {
     
-	for( int i = 0; i < 10; i++) { mSkeletonStates[i] = {nite::SKELETON_NONE}; }
+	for( int i = 0; i < 10; i++) { mSkeletonStates[i] = nite::SKELETON_NONE; }
 
 	openni::Status rc = openni::OpenNI::initialize();
 	if (rc != openni::STATUS_OK)
@@ -45,7 +61,7 @@ void OpenNIApp::setup()
 
 	if (rc != openni::STATUS_OK)
 	{
-		console() << "Failed to open device ", openni::OpenNI::getExtendedError());
+		console() << "Failed to open device " << openni::OpenNI::getExtendedError() << endl;
 		return;
 	}
 
@@ -56,7 +72,6 @@ void OpenNIApp::setup()
 		console() << " Status error " <<  openni::STATUS_ERROR << endl;
 		return;
 	}
-
 
     gl::Texture::Format format;
     
@@ -71,158 +86,147 @@ void OpenNIApp::mouseDown( MouseEvent event )
 
 void OpenNIApp::update()
 {
-    
-	nite::UserTrackerFrameRef userTrackerFrame;
 	openni::VideoFrameRef depthFrame;
 	nite::Status rc = mTracker->readFrame(&userTrackerFrame);
-	if (rc != nite::STATUS_OK)
-	{
+	if (rc != nite::STATUS_OK) {
 		console() << "Get Data from user tracker failed " << endl;
 		return;
 	}
 
+	// we have a depth frame
 	depthFrame = userTrackerFrame.getDepthFrame();
 
     const nite::Array<nite::UserData>& users = userTrackerFrame.getUsers();
-	for (int i = 0; i < users.getSize(); ++i)
+
+	mUserCount = userTrackerFrame.getUsers().getSize();
+
+	for (int i = 0; i < userTrackerFrame.getUsers().getSize(); ++i)
 	{
-		const nite::UserData& user = users[i];
+		const nite::UserData& user = userTrackerFrame.getUsers()[i];
 
 		//updateUserState(user, userTrackerFrame.getTimestamp());
 
-	if (user.isNew()) {
-		console() << "New");
-	} else if (user.isVisible() && !mVisibleUsers[user.getId()]) {
-		console() << "User " << user.getId() << " visible at " << userTrackerFrame.getTimestamp() << endl;
-	} else if (!user.isVisible() && mVisibleUsers[user.getId()]) {
-		console() << "User " << user.getId() << " visible at " << userTrackerFrame.getTimestamp() << endl;
-	} else if (user.isLost()) {
-		console() << "Lost");
-	}
-	mVisibleUsers[user.getId()] = user.isVisible();
-
-
-	if(mSkeletonStates[user.getId()] != user.getSkeleton().getState())
-	{
-		switch(mSkeletonStates[user.getId()] = user.getSkeleton().getState())
-		{
-		case nite::SKELETON_NONE:
-			console() << "Stopped tracking.")
-			break;
-		case nite::SKELETON_CALIBRATING:
-			console() << "Calibrating...")
-			break;
-		case nite::SKELETON_TRACKED:
-			console() << "Tracking!")
-			break;
-		case nite::SKELETON_CALIBRATION_ERROR_NOT_IN_POSE:
-		case nite::SKELETON_CALIBRATION_ERROR_HANDS:
-		case nite::SKELETON_CALIBRATION_ERROR_LEGS:
-		case nite::SKELETON_CALIBRATION_ERROR_HEAD:
-		case nite::SKELETON_CALIBRATION_ERROR_TORSO:
-			console() << "Calibration Failed... :-|" << endl;
-			break;
+		if (user.isNew()) {
+			console() << "New" << endl;
+		} else if (user.isVisible() && !mVisibleUsers[user.getId()]) {
+			console() << "User " << user.getId() << " visible at " << userTrackerFrame.getTimestamp() << endl;
+		} else if (!user.isVisible() && mVisibleUsers[user.getId()]) {
+			console() << "User " << user.getId() << " visible at " << userTrackerFrame.getTimestamp() << endl;
+		} else if (user.isLost()) {
+			console() << "Lost" << endl;
 		}
-	}
+
+		mVisibleUsers[user.getId()] = user.isVisible();
+
+
+		if(mSkeletonStates[user.getId()] != user.getSkeleton().getState())
+		{
+			switch(mSkeletonStates[user.getId()] = user.getSkeleton().getState())
+			{
+			case nite::SKELETON_NONE:
+				console() << "Stopped tracking." << endl;
+				break;
+			case nite::SKELETON_CALIBRATING:
+				console() << "Calibrating..." << endl;
+				break;
+			case nite::SKELETON_TRACKED:
+				console() << "Tracking!" << endl;
+				break;
+			case nite::SKELETON_CALIBRATION_ERROR_NOT_IN_POSE:
+			case nite::SKELETON_CALIBRATION_ERROR_HANDS:
+			case nite::SKELETON_CALIBRATION_ERROR_LEGS:
+			case nite::SKELETON_CALIBRATION_ERROR_HEAD:
+			case nite::SKELETON_CALIBRATION_ERROR_TORSO:
+				console() << " OPENNI :: Calibration Failed " << endl;
+				break;
+			}
+		}
 
 		if (user.isNew())
 		{
 			mTracker->startSkeletonTracking(user.getId());
 			mTracker->startPoseDetection(user.getId(), nite::POSE_CROSSED_HANDS);
 		}
-		else if (!user.isLost())
-		{
-			if (users[i].getSkeleton().getState() == nite::SKELETON_TRACKED)
-			{
-				DrawSkeleton(mTracker, user);
-			}
-		}
 
-		if (m_poseUser == 0 || m_poseUser == user.getId())
+		// this allows a user to exit the application by making the crossed hands pose
+		// reference OpenNI
+		if (exitPoseUserId == 0 || exitPoseUserId == user.getId())
 		{
 			const nite::PoseData& pose = user.getPose(nite::POSE_CROSSED_HANDS);
 
 			if (pose.isEntered())
 			{
 				// Start timer
-				sprintf(g_generalMessage, "In exit pose. Keep it for %d second%s to exit\n", g_poseTimeoutToExit/1000, g_poseTimeoutToExit/1000 == 1 ? "" : "s");
-				printf("Counting down %d second to exit\n", g_poseTimeoutToExit/1000);
-				m_poseUser = user.getId();
-				m_poseTime = userTrackerFrame.getTimestamp();
+				console() << "In exit pose. Keep it for " << exitPoseTimeout << " seconds to exit " << endl;
+				console() << "Counting down " << exitPoseTimeout << " seconds to exit " << endl;
+
+				exitPoseUserId = user.getId();
+				exitPoseUserTimestamp = userTrackerFrame.getTimestamp();
 			}
 			else if (pose.isExited())
 			{
-				memset(g_generalMessage, 0, sizeof(g_generalMessage));
-				printf("Count-down interrupted\n");
-				m_poseTime = 0;
-				m_poseUser = 0;
+				console() << " Count-down interrupted, we're not going to exit any more " << endl;
+				exitPoseUserTimestamp = 0;
+				exitPoseUserId = 0;
 			}
 			else if (pose.isHeld())
 			{
 				// tick
-				if (userTrackerFrame.getTimestamp() - m_poseTime > g_poseTimeoutToExit * 1000)
+				if (userTrackerFrame.getTimestamp() - exitPoseUserTimestamp > exitPoseTimeout) // have we been doing this long enough
 				{
-					printf("Count down complete. Exit...\n");
-					Finalize();
-					exit(2);
+					console() << " We're out people." << endl;
+					exit();
+					quit();
 				}
 			}
 		}
 	}
-
-    
 }
 
-void OpenNIApp::DrawSkeleton(nite::UserTracker* pUserTracker, const nite::UserData& userData)
+void OpenNIApp::drawSkeleton(const nite::UserData& userData)
 {
 
+	Color userColor(CM_HSV, mColorCounter, 1.f, 1.f );
+	mColorCounter += 1.f / (float) mUserCount;
+
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_HEAD), userData.getSkeleton().getJoint(nite::JOINT_NECK), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_LEFT_ELBOW), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_ELBOW), userData.getSkeleton().getJoint(nite::JOINT_LEFT_HAND), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_RIGHT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_ELBOW), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_RIGHT_ELBOW), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HAND), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_SHOULDER), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_TORSO), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_RIGHT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_TORSO), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_TORSO), userData.getSkeleton().getJoint(nite::JOINT_LEFT_HIP), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_TORSO), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HIP), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_HIP), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HIP), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_HIP), userData.getSkeleton().getJoint(nite::JOINT_LEFT_KNEE), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_LEFT_KNEE), userData.getSkeleton().getJoint(nite::JOINT_LEFT_FOOT), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HIP), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_KNEE), userColor);
+	drawLimb( userData.getSkeleton().getJoint(nite::JOINT_RIGHT_KNEE), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_FOOT), userColor);
+}
+
+void OpenNIApp::drawLimb(const nite::SkeletonJoint& joint1, const nite::SkeletonJoint& joint2, Color& color)
+{	
 	float coordinates[6] = {0};
-	pUserTracker->convertJointCoordinatesToDepth(joint1.getPosition().x, joint1.getPosition().y, joint1.getPosition().z, &coordinates[0], &coordinates[1]);
-	pUserTracker->convertJointCoordinatesToDepth(joint2.getPosition().x, joint2.getPosition().y, joint2.getPosition().z, &coordinates[3], &coordinates[4]);
+	mTracker->convertJointCoordinatesToDepth(joint1.getPosition().x, joint1.getPosition().y, joint1.getPosition().z, &coordinates[0], &coordinates[1]);
+	mTracker->convertJointCoordinatesToDepth(joint2.getPosition().x, joint2.getPosition().y, joint2.getPosition().z, &coordinates[3], &coordinates[4]);
 
-	coordinates[0] *= GL_WIN_SIZE_X/g_nXRes;
-	coordinates[1] *= GL_WIN_SIZE_Y/g_nYRes;
-	coordinates[3] *= GL_WIN_SIZE_X/g_nXRes;
-	coordinates[4] *= GL_WIN_SIZE_Y/g_nYRes;
+	coordinates[0] *= getWindowWidth()/depthX;
+	coordinates[1] *= getWindowHeight()/depthY;
+	coordinates[3] *= getWindowWidth()/depthX;
+	coordinates[4] *= getWindowHeight()/depthY;
 
-	if (joint1.getPositionConfidence() == 1 && joint2.getPositionConfidence() == 1)
-	{
-		glColor3f(1.0f - Colors[color][0], 1.0f - Colors[color][1], 1.0f - Colors[color][2]);
-	}
-	else if (joint1.getPositionConfidence() < 0.5f || joint2.getPositionConfidence() < 0.5f)
-	{
+	if (joint1.getPositionConfidence() == 1 && joint2.getPositionConfidence() == 1) {
+		// make better colors
+		gl::color(color);
+	} else if (joint1.getPositionConfidence() < 0.5f || joint2.getPositionConfidence() < 0.5f) {
 		return;
-	}
-	else
-	{
-		glColor3f(.5, .5, .5);
+	} else {
+		gl::color(Color(.5, .5, .5));
 	}
 
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_HEAD), userData.getSkeleton().getJoint(nite::JOINT_NECK), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_LEFT_ELBOW), userData.getId() % colorCount);
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_ELBOW), userData.getSkeleton().getJoint(nite::JOINT_LEFT_HAND), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_RIGHT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_ELBOW), userData.getId() % colorCount);
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_RIGHT_ELBOW), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HAND), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_SHOULDER), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_TORSO), userData.getId() % colorCount);
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_RIGHT_SHOULDER), userData.getSkeleton().getJoint(nite::JOINT_TORSO), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_TORSO), userData.getSkeleton().getJoint(nite::JOINT_LEFT_HIP), userData.getId() % colorCount);
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_TORSO), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HIP), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_HIP), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HIP), userData.getId() % colorCount);
-
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_HIP), userData.getSkeleton().getJoint(nite::JOINT_LEFT_KNEE), userData.getId() % colorCount);
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_LEFT_KNEE), userData.getSkeleton().getJoint(nite::JOINT_LEFT_FOOT), userData.getId() % colorCount);
-
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_RIGHT_HIP), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_KNEE), userData.getId() % colorCount);
-	DrawLimb(pUserTracker, userData.getSkeleton().getJoint(nite::JOINT_RIGHT_KNEE), userData.getSkeleton().getJoint(nite::JOINT_RIGHT_FOOT), userData.getId() % colorCount);
+	gl::drawLine( Vec3f(joint1.getPosition().x, joint1.getPosition().y, joint1.getPosition().z), Vec3f(joint2.getPosition().x, joint2.getPosition().y, joint2.getPosition().z));
 }
 
 void OpenNIApp::exit()
@@ -236,9 +240,22 @@ void OpenNIApp::draw()
 {
 	// clear out the window with black
 	gl::clear( Color( 0, 0, 0 ) ); 
-    
-    //gl::draw( depth );
-    gl::draw( color );
+    gl::draw( depthTex );
+	mColorCounter = 0.f;
+
+	// draw all the users
+	for(int i = 0; i < userTrackerFrame.getUsers().getSize(); i++) {
+
+		if (!userTrackerFrame.getUsers()[i].isLost())
+		{
+			if (userTrackerFrame.getUsers()[i].getSkeleton().getState() == nite::SKELETON_TRACKED)
+			{
+				drawSkeleton(userTrackerFrame.getUsers()[i]);
+			}
+		}
+
+	}
+
 }
 
 
