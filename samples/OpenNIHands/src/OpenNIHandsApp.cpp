@@ -1,7 +1,9 @@
 #include "cinder/app/AppBasic.h"
 #include "cinder/gl/gl.h"
+#include "cinder/gl/Texture.h"
 
-//#include "OpenNI.h"
+#define USING_NITE
+#include "ciOpenNI.h"
 
 using namespace ci;
 using namespace ci::app;
@@ -14,109 +16,36 @@ class OpenNIHandsApp : public AppBasic {
 	void mouseDown( MouseEvent event );	
 	void update();
 	void draw();
+	void exit();
     
-    xn::Context m_context;
-    xn::ScriptNode m_scriptNode;
-    xn::DepthGenerator m_depth;
-    xn::ImageGenerator m_image;
-    
-	xn::GestureGenerator	mGestureGenerator;
-	xn::HandsGenerator		mHandsGenerator;
-    
-    xn::DepthMetaData m_depthMD;
-    xn::ImageMetaData m_imageMD;
-    
-    void gestureRecognized(xn::GestureGenerator& generator, const XnChar* strGesture, const XnPoint3D*	pIDPosition, const XnPoint3D*	pEndPosition);
-	void gestureProcess( xn::GestureGenerator& generator, const XnChar* strGesture, const XnPoint3D* pPosition, XnFloat fProgress);
-	void handCreate( xn::HandsGenerator& generator, XnUserID nId, const XnPoint3D* pPosition, XnFloat fTime );
-	void handUpdate( xn::HandsGenerator& generator, XnUserID nId, const XnPoint3D* pPosition, XnFloat fTime );
-	void handDestroy( xn::HandsGenerator& generator, XnUserID nId, XnFloat fTime );
-    
-    XnCallbackHandle handle;
-    
-	// OpenNI Gesture and Hands Generator callbacks
-	static void XN_CALLBACK_TYPE Gesture_Recognized(xn::GestureGenerator& generator, const XnChar* strGesture, const XnPoint3D* pIDPosition, const XnPoint3D* pEndPosition, void* pCookie) 
-    {
-        OpenNIHandsApp *app = static_cast<OpenNIHandsApp*>(pCookie);
-        app->gestureRecognized( generator, strGesture, pIDPosition, pEndPosition );
-    }
-	
-    static void XN_CALLBACK_TYPE Gesture_Process(xn::GestureGenerator& generator, const XnChar* strGesture, const XnPoint3D* pPosition, XnFloat fProgress, void* pCookie) 
-    {
-        OpenNIHandsApp *app = static_cast<OpenNIHandsApp*>(pCookie);
-        app->gestureProcess( generator, strGesture, pPosition, fProgress );
-    }
-	
-    static void XN_CALLBACK_TYPE Hand_Create( xn::HandsGenerator& generator, XnUserID nId,const XnPoint3D* pPosition, XnFloat	fTime, void* pCookie) 
-    {
-        OpenNIHandsApp *app = static_cast<OpenNIHandsApp*>(pCookie);
-        app->handCreate( generator, nId, pPosition, fTime );
-    }
-	
-    static void XN_CALLBACK_TYPE Hand_Update( xn::HandsGenerator& generator, XnUserID nId, const XnPoint3D* pPosition, XnFloat fTime, void* pCookie) 
-    {
-        OpenNIHandsApp *app = static_cast<OpenNIHandsApp*>(pCookie);
-        app->handUpdate( generator, nId, pPosition, fTime );
-    }
-	
-    static void XN_CALLBACK_TYPE Hand_Destroy( xn::HandsGenerator& generator, XnUserID nId, XnFloat fTime, void* pCookie) 
-    {
-        OpenNIHandsApp *app = static_cast<OpenNIHandsApp*>(pCookie);
-        app->handDestroy( generator, nId, fTime );
-    }
-    
+    nite::HandTracker handTracker;
+	nite::HandTrackerFrameRef handTrackerFrame;
+
+	gl::Texture depth;
 };
 
 void OpenNIHandsApp::setup()
 {
-   calibratedUser = false;
-    strPose = "";
-    
-    string str = getResourcePath() + "/ONIConfig.xml";
-    
-    xn::EnumerationErrors errors;
-    
-    XnStatus ret = XN_STATUS_OK;
-    
-    ret = mContext.InitFromXmlFile(str.c_str(), mScriptNode, &errors);
-   
-    if (ret != XN_STATUS_OK) { console() << " can't make context "; }
-    
-    ret = mContext.FindExistingNode(XN_NODE_TYPE_DEPTH, mDepth);
-    
-    if (ret != XN_STATUS_OK) { console() << " can't make depth "; }
-    
-    ret = mContext.FindExistingNode(XN_NODE_TYPE_IMAGE, mImage);
-    
-    if (ret != XN_STATUS_OK) { console() << " can't make image "; }
+   nite::Status niteRc = nite::NiTE::initialize();
+	if (niteRc != nite::STATUS_OK)
+	{
+		printf("NiTE initialization failed\n");
+		return;
+	}
 
-    ret = mGestureGenerator.Create(mContext);
-    
-    if (ret != XN_STATUS_OK) { console() << " can't make image "; }
+	niteRc = handTracker.create();
+	if (niteRc != nite::STATUS_OK)
+	{
+		printf("Couldn't create user tracker\n");
+		return;
+	}
 
-    ret = mHandsGenerator.Create(mContext);
-    
-    if (ret != XN_STATUS_OK) { console() << " can't make image "; }
-    
-    ret = mContext.StartGeneratingAll();
-
-    if (ret != XN_STATUS_OK) { console() << " can't start generating "; }
-    
-    mUserGenerator.RegisterUserCallbacks(&OpenNIApp::User_NewUser, &OpenNIApp::User_LostUser, this, hUserCallbacks);
-    mUserGenerator.GetSkeletonCap().RegisterToCalibrationStart(&OpenNIApp::UserCalibration_CalibrationStart, this, hCalibrationStart);
-    mUserGenerator.GetSkeletonCap().RegisterToCalibrationComplete(&OpenNIApp::UserCalibration_CalibrationComplete, this, hCalibrationComplete);
-    
-    // first the simple hand callbacks
-    mHandsGenerator.RegisterHandCallbacks(Hand_Create, Hand_Update, Hand_Destroy, this, chandle);
-
-    // now the gestural ones
-    mGestureGenerator.RegisterGestureCallbacks(Gesture_Recognized, Gesture_Process, this, chandle);
-    mGestureGenerator.AddGesture("click", this);
-    mGestureGenerator.AddGesture("wave", this);
+	// we're only listening for these two
+	handTracker.startGestureDetection(nite::GESTURE_WAVE);
+	handTracker.startGestureDetection(nite::GESTURE_CLICK);
 
     gl::Texture::Format format;
-    
-    color = gl::Texture(640, 480, format);
+
     depth = gl::Texture(320, 240, format);
 }
 
@@ -126,6 +55,44 @@ void OpenNIHandsApp::mouseDown( MouseEvent event )
 
 void OpenNIHandsApp::update()
 {
+	nite::Status niteRc = handTracker.readFrame(&handTrackerFrame);
+	if (niteRc != nite::STATUS_OK)
+	{
+		console() << "Get next frame failed " << endl;
+		return;
+	}
+
+	// get the texture
+	depth = gl::Texture(fromOpenNI(handTrackerFrame.getDepthFrame()));
+
+	const nite::Array<nite::GestureData>& gestures = handTrackerFrame.getGestures();
+	for (int i = 0; i < gestures.getSize(); ++i)
+	{
+		if (gestures[i].isComplete())
+		{
+
+			if(gestures[i].getType() == nite::GESTURE_CLICK) {
+				console() << " caught a click " << endl;
+			} else if(gestures[i].getType() == nite::GESTURE_HAND_RAISE) {
+				console() << " caught a hand raise " << endl;
+			} else if(gestures[i].getType() == nite::GESTURE_WAVE) {
+				console() << " caught a wave " << endl;
+			}
+
+			nite::HandId newId;
+			handTracker.startHandTracking(gestures[i].getCurrentPosition(), &newId);
+		}
+	}
+
+	const nite::Array<nite::HandData>& hands = handTrackerFrame.getHands();
+	for (int i = 0; i < hands.getSize(); ++i)
+	{
+		const nite::HandData& hand = hands[i];
+		if (hand.isTracking())
+		{
+			console() << " Hand ID " << hand.getId() << " X: " << hand.getPosition().x << " Y: " << hand.getPosition().y << " Z: " << hand.getPosition().z << endl;
+		}
+	}
 }
 
 void OpenNIHandsApp::draw()
@@ -134,29 +101,10 @@ void OpenNIHandsApp::draw()
 	gl::clear( Color( 0, 0, 0 ) ); 
 }
 
-//---------------------------------------------------------------------------
-// Hooks
-//---------------------------------------------------------------------------
-
-/*void OpenNIHandsApp::gestureRecognized(xn::GestureGenerator& generator, const XnChar* strGesture, const XnPoint3D*	pIDPosition, const XnPoint3D*	pEndPosition) {
-    console() << strGesture;
+void OpenNIHandsApp::exit()
+{
+	nite::NiTE::shutdown();
+	handTrackerFrame.release();
 }
-
-void OpenNIHandsApp::gestureProcess( xn::GestureGenerator& generator, const XnChar* strGesture, const XnPoint3D* pPosition, XnFloat fProgress) {
-    console() << strGesture;
-}
-
-void OpenNIHandsApp::handCreate( xn::HandsGenerator& generator, XnUserID nId, const XnPoint3D* pPosition, XnFloat fTime ) {
-    console() << " created " << nId << " " << pPosition->X << " " << pPosition->Y << " " << pPosition->Z;
-}
-
-void OpenNIHandsApp::handUpdate( xn::HandsGenerator& generator, XnUserID nId, const XnPoint3D* pPosition, XnFloat fTime ) {
-    console() << " updated " << nId << " " << pPosition->X << " " << pPosition->Y << " " << pPosition->Z;
-}
-
-void OpenNIHandsApp::handDestroy( xn::HandsGenerator& generator, XnUserID nId, XnFloat fTime ) {
-    console() << " destroyed " << nId << " " << fTime;
-}*/
-
 
 CINDER_APP_BASIC( OpenNIHandsApp, RendererGl )
