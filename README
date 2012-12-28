@@ -1,5 +1,4 @@
 
-
 This is a very simple wrapper for OpenNI to use with Cinder, following on the philosophy of wrapping only things that need to be wrapped and allowing users to dig into the specifics of their library as much as possible. 
 
 OSX
@@ -14,3 +13,4 @@ Because XCode assumes that / is the same as /Developer/SDK/blah/blah I've added 
 VC10
 ---
  
+In preferences -> “C/C++” tab, add C:\Program Files(x86)\OpenNI2\Include and optionally C:\Program Files(x86)\Primesense\NITE2\Include to the header include paths. You'll also want to add the same paths to the Linker paths, as well as adding the libraries themselves. You should also make sure that the the include path to ciOpenNI.h is there, for the simple fromOpenNI() and toOpenNI() methods. That's about all. Have fun!
