@@ -14,6 +14,8 @@ Win7 VC10 is fully supported. Win8 VC12 is not yet supported by OpenNI
  
 In preferences -> “C/C++” tab, add C:\Program Files(x86)\OpenNI2\Include and optionally C:\Program Files(x86)\Primesense\NITE2\Include to the header include paths. You'll also want to add the same paths to the Linker paths, as well as adding the libraries themselves. You should also make sure that the the include path to ciOpenNI.h is there, for the simple fromOpenNI() and toOpenNI() methods. That's about all. Have fun!
 
+Make sure to copy the Redist folder from your OpenNI and optionally from your NITE install to the Working Directory for your application, which is probably {APP}/vc10 unless you've changed it for some reason.
+
 
 ARM is not yet fully supported by OpenNI
 ---
